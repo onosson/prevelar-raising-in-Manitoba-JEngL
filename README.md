@@ -1,0 +1,3 @@
+This repository contains the various R files that I used to analyze data and create visualizations for the upcoming paper "Prevelar Raising and Merger in Manitoba English", which has been accepted for publication at the Journal of English Linguistics, pending revisions (hopefully to appear in 2022).
+
+These scripts will not run properly without the associated data files which are not contained in this repository. The data itself derives from the Languages in the Prairies Project overseen by Dr. Nicole Rosen at the University of Manitoba, and is not open-source, so cannot be included here. The scripts themselves are my own, and I provide them here in case they may prove useful to anyone.
