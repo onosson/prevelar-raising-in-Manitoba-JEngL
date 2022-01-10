@@ -11,5 +11,5 @@ Most of these scripts will not run properly without the associated data files, w
 - maps.Rmd produces a map of North America identifying prevelar raising regions.
 - MB_vowels.Rmd enerates plots of the LIPP mean vowel positions in F1 x F2 space
 - prevelar_schematic.R modifies figure 1.1 from the Introduction to "The Low-Back-Merger Shift: Uniting the Canadian Vowel Shift, the California Vowel Shift, and Short Front Vowel Shifts across North America" (Kara Becker, 2019, Publication of the American Dialect Society 104(1), p. 1)
-- trajectories.Rmd
+- trajectories.Rmd produces GAMMs plots
 
