@@ -1,0 +1,73 @@
+---
+title: "Map"
+output: html_notebook
+---
+
+North America map identifying prevelar raising regions.
+
+```{r}
+library(rgdal)
+
+if (!file.exists("./src/ref/ne_50m_admin_1_states_provinces_lakes/ne_50m_admin_1_states_provinces_lakes.dbf")){
+  download.file(file.path('http://www.naturalearthdata.com/http/',
+                          'www.naturalearthdata.com/download/50m/cultural',
+                          'ne_50m_admin_1_states_provinces_lakes.zip'), 
+                f <- tempfile())
+  unzip(f, exdir = "./src/ref/ne_50m_admin_1_states_provinces_lakes")
+  rm(f)
+}
+
+state_prov <- readOGR("./src/ref/ne_50m_admin_1_states_provinces_lakes", 'ne_50m_admin_1_states_provinces_lakes', encoding='UTF-8')
+```
+
+```{r}
+namerica <- subset(state_prov, admin %in% c("United States of America", "Canada")) 
+```
+
+```{r}
+region_colour <- "brown" # bw = grey40
+statprov_colour <- "grey25" # bw = black
+poly_colour <- "cornsilk" # bw = grey80
+path_colour <- "grey80" # bw = white
+
+namap <- ggplot(namerica) + 
+  aes(long, lat, group = group) + 
+  geom_polygon(fill = poly_colour) +
+  coord_map("bonne", lat0 = 50,
+            xlim = c(-129, -82),
+            ylim = c(43, 61)) +
+  geom_path(color = path_colour) +
+  geom_text(x = -98, y = 55, colour = statprov_colour, 
+            label = "Manitoba") +
+  geom_text(x = -105.75, y = 52, colour = statprov_colour, 
+            label = "Saskatchewan") +
+  geom_text(x = -115, y = 55, colour = statprov_colour, 
+            label = "Alberta") +
+  geom_text(x = -125, y = 56, colour = statprov_colour, 
+            label = "British \nColumbia") +
+  geom_text(x = -120, y = 47, colour = statprov_colour, 
+            label = "Washington") +
+  geom_text(x = -94, y = 47.75, colour = statprov_colour, 
+            label = "Minnesota") +
+  geom_text(x = -90.25, y = 45, colour = statprov_colour, 
+            label = "Wisconsin") +
+  geom_text(x = -122.25, y = 51, angle = 300, colour = region_colour, size = 4,
+            label = "PACIFIC NORTHWEST") +
+  geom_text(x = -105.75, y = 50, colour = region_colour, size = 4.5,
+            label = "THE PRAIRIES") +
+  geom_text(x = -92.5, y = 44, angle = 330, colour = region_colour, size = 4,
+            label = "UPPER MIDWEST") +
+  theme_minimal() +
+  labs(x = "", y = "") +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(), #remove x axis labels
+        axis.ticks.x = element_blank(), #remove x axis ticks
+        axis.text.y = element_blank(),  #remove y axis labels
+        axis.ticks.y = element_blank()  #remove y axis ticks
+        )
+```
+
+```{r}
+ggsave("Maps_misc/n_america_5x9_colour.pdf", namap, height = 5, width = 9)
+ggsave("Maps_misc/n_america_5x9_colour.tiff", namap, height = 5, width = 9)
+```

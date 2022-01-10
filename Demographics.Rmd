@@ -1,0 +1,132 @@
+---
+title: "LIPP Demographics"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+# Description
+
+A compilation of data and demographic information for the LIPP participants
+
+```{r preliminaries, include=FALSE}
+source("_prelims.R")
+rm(list=ls()[! ls() %in% never_delete])
+source("merger_data.R")
+```
+
+# Vowel tokens
+
+```{r}
+# Vowels by word class
+vowel_classes
+```
+
+```{r}
+# Vowels by coda class
+coda_classes
+```
+
+# Demographics
+
+```{r demographic data, include=FALSE}
+Demographics <- MergerData %>% 
+  group_by(speaker_id) %>% 
+  summarise(year, ethnicity, sex, location, generation,
+            filipino_id, mennonite_id, mennonite_reserve) %>% 
+  distinct()
+
+Demographics$mennonite_reserve[Demographics$location %in% c("Altona", "Morden", "Winkler")] <- "West Reserve"
+
+Demographics$mennonite_reserve[Demographics$location %in% c("Blumenort", "Ste. Anne", "Steinbach")] <- "East Reserve"
+```
+
+## European Winnipeggers
+
+```{r EuroWpg}
+EuroWpg <- Demographics %>% filter(ethnicity == "European")
+
+# Sex
+table(EuroWpg$sex)
+
+# Generation
+table(EuroWpg$generation)
+
+# Year of birth
+summary(EuroWpg$year)
+```
+
+## Filipino Winnipeggers
+
+```{r FiliWpg}
+FiliWpg <- Demographics %>% filter(ethnicity == "Filipino")
+
+# Sex
+table(FiliWpg$sex)
+
+# Generation
+table(FiliWpg$generation)
+
+# Year of birth
+summary(FiliWpg$year)
+
+# Filipino identity
+summary(FiliWpg$filipino_id)
+```
+
+## East Reserve Mennonites
+
+```{r MennEast}
+MennEast <- Demographics %>% filter(mennonite_reserve == "East Reserve")
+
+# Sex
+table(MennEast$sex)
+
+# Generation
+table(MennEast$generation)
+
+# Year of birth
+summary(MennEast$year)
+
+# Mennonite identity
+summary(MennEast$mennonite_id)
+```
+
+## West Reserve Mennonites
+
+```{r MennWest}
+MennWest <- Demographics %>% filter(mennonite_reserve == "West Reserve")
+
+# Sex
+table(MennWest$sex)
+
+# Generation
+table(MennWest$generation)
+
+# Year of birth
+summary(MennWest$year)
+
+# Mennonite identity
+summary(MennWest$mennonite_id)
+```
+
+## All Mennonites
+
+```{r Mennonites}
+Mennonites <- Demographics %>% filter(ethnicity == "Mennonite")
+
+# Sex
+table(Mennonites$sex)
+
+# Generation
+table(Mennonites$generation)
+
+# Year of birth
+summary(Mennonites$year)
+
+# Mennonite identity
+summary(Mennonites$mennonite_id)
+```

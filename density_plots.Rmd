@@ -1,0 +1,315 @@
+---
+title: "FAVE density"
+output: html_notebook
+---
+
+```{r preliminaries}
+source("_prelims.R")
+rm(list=ls()[! ls() %in% never_delete])
+source("merger_data.R")
+```
+
+```{r data reshaping and normalization}
+# subset data:
+FormantData <- MergerData %>% 
+  select(speaker_id, word, vowel, dur, coda,
+         ethnicity, gender, age, mennonite_reserve,
+         F1_20, F1_35, F1_50, F1_65, F1_80, F2_20, F2_35, F2_50, F2_65, F2_80,
+         norm_F1_20, norm_F1_35, norm_F1_50, norm_F1_65, norm_F1_80, 
+         norm_F2_20, norm_F2_35, norm_F2_50, norm_F2_65, norm_F2_80) %>% 
+  group_by(speaker_id) %>% 
+  mutate(z_F1_20 = scale(F1_20), z_F1_35 = scale(F1_35), z_F1_50 = scale(F1_50),
+         z_F1_65 = scale(F1_65), z_F1_80 = scale(F1_80), 
+         z_F2_20 = scale(F2_20), z_F2_35 = scale(F2_35), z_F2_50 = scale(F2_50),
+         z_F2_65 = scale(F2_65), z_F2_80 = scale(F2_80),
+         Coda = coda, Vowel = vowel, Ethnicity = ethnicity, Gender = gender, Age = age,
+         `Mennonite Reserve` = mennonite_reserve) %>% 
+  drop_na(norm_F1_20, norm_F1_35, norm_F1_50, norm_F1_65, norm_F1_80, 
+          norm_F2_20, norm_F2_35, norm_F2_50, norm_F2_65, norm_F2_80)
+
+FormantData$Coda <- fct_relevel(FormantData$Coda, "ɡ", "ŋ", "k", "other")
+```
+
+```{r variables and sub-plot format}
+# variables
+
+folder <- "Density_plots/"
+
+plot_width <- 5
+plot_height <- 5
+z_grid_lines <- 1
+
+```
+
+```{r sub_plots}
+sub_plot_z <- list(
+  scale_x_reverse(breaks = seq(-10, 10, by = z_grid_lines)),
+  scale_y_reverse(breaks = seq(-10, 10, by = z_grid_lines)),
+  coord_fixed(ratio = 1)
+)
+
+sub_plot_density <- list(
+  stat_density_2d(
+    bins = 4,
+    geom = "contour_filled",
+    colour = "black",
+    size = 0.25, 
+    aes(alpha = ..nlevel..)
+  ))
+
+sub_plot_color <- list(
+  scale_fill_viridis_d(direction = 1, option = "C"),
+  scale_colour_viridis_d(direction = 1, option = "C")
+)
+
+sub_plot_theme <- list(
+  scale_alpha(range = c(0.1, 0.4)),
+  scale_linetype_manual(values = c(1,2,3,6,1,5,4)),
+  theme(text=element_text(size=14, family="Times New Roman")),
+  theme_bw()
+)
+
+```
+
+```{r plot_save function}
+plot_save <- function(this_plot, this_name){
+  
+  ggsave(paste0(folder, this_name, ".pdf"), 
+         this_plot + labs(title = ""),
+         device = cairo_pdf
+  )
+  
+  ggsave(paste0(folder, this_name, ".tiff"), 
+         this_plot + labs(title = "")
+  )
+  
+}
+```
+
+```{r z_density function}
+z_density <- function(this_factor, this_data) {
+  
+  this_plot <- 
+    ggplot(this_data, 
+           aes_(x = as.name("z_F2_50"), 
+                y = as.name("z_F1_50"), 
+                fill = as.name(this_factor),
+                linetype = as.name(this_factor))
+    ) +
+    labs(alpha = "Density",
+         fill = this_factor, 
+         linetype = this_factor,
+         x = "F2 (z)", 
+         y = "F1 (z)"
+    ) +
+    sub_plot_z +
+    sub_plot_density +
+    sub_plot_theme +
+    sub_plot_color +
+    theme(text=element_text(size=14, family="Times New Roman"))
+  
+  this_name <- paste0(deparse(substitute(this_data)), 
+                      "_by_", 
+                      as.name(this_factor),
+                      "_z")
+  
+  plot_save(this_plot, this_name)
+  
+}
+```
+
+```{r Hz_density function}
+Hz_density <- function(this_factor, this_data) {
+  
+  this_plot <- 
+    ggplot(this_data, 
+           aes_(x = as.name("norm_F2_50"), 
+                y = as.name("norm_F1_50"), 
+                fill = as.name(this_factor),
+                linetype = as.name(this_factor))
+    ) +
+    labs(alpha = "Density",
+         fill = this_factor, 
+         linetype = this_factor,
+         x = "F2 (Hz)", 
+         y = "F1 (Hz)"
+    ) +
+    scale_x_reverse() +
+    scale_y_reverse() +
+    sub_plot_density +
+    sub_plot_theme +
+    sub_plot_color +
+    theme(text=element_text(size=14, family="Times New Roman"))
+  
+  this_name <- paste0(deparse(substitute(this_data)), 
+                      "_by_", 
+                      as.name(this_factor),
+                      "_Hz")
+  
+  plot_save(this_plot, this_name)
+  
+}
+```
+
+```{r AE_density by Coda and Gender}
+AE_density <- FormantData %>% filter(vowel == "æ")
+
+z_density("Coda", AE_density)
+Hz_density("Coda", AE_density)
+
+z_density("Gender", AE_density)
+Hz_density("Gender", AE_density)
+```
+
+```{r EH_density by Coda and Ethnicity}
+EH_density <- FormantData %>% filter(vowel == "ɛ")
+
+z_density("Coda", EH_density)
+Hz_density("Coda", EH_density)
+
+z_density("Ethnicity", EH_density)
+Hz_density("Ethnicity", EH_density)
+```
+
+```{r EY_density by Coda, Gender and Ethnicity}
+EY_density <- FormantData %>% filter(vowel == "e")
+
+z_density("Coda", EY_density)
+Hz_density("Coda", EY_density)
+
+z_density("Gender", EY_density)
+Hz_density("Gender", EY_density)
+
+z_density("Ethnicity", EY_density)
+Hz_density("Ethnicity", EY_density)
+```
+
+```{r G_density by Vowel}
+G_density <- FormantData %>% filter(coda == "ɡ")
+
+z_density("Vowel", G_density)
+Hz_density("Vowel", G_density)
+```
+
+```{r G_female_Filipino_density by Age}
+G_female_Filipino_density <- FormantData %>% 
+  filter(coda == "ɡ", gender == "woman", ethnicity == "Filipino")
+
+z_density("Age", G_female_Filipino_density)
+Hz_density("Age", G_female_Filipino_density)
+```
+
+```{r G_younger_female_density by Ethnicity}
+G_younger_female_density <- FormantData %>% 
+  filter(coda == "ɡ", gender == "woman", age == "younger")
+
+z_density("Ethnicity", G_younger_female_density)
+Hz_density("Ethnicity", G_younger_female_density)
+```
+
+```{r G_younger_Filipino_density by Gender}
+G_younger_Filipino_density <- FormantData %>% 
+  filter(coda == "ɡ", ethnicity == "Filipino", age == "younger")
+
+z_density("Gender", G_younger_Filipino_density)
+Hz_density("Gender", G_younger_Filipino_density)
+```
+
+```{r NG_density by Vowel, Age and Gender}
+NG_density <- FormantData %>% filter(coda == "ŋ")
+
+z_density("Vowel", NG_density)
+Hz_density("Vowel", NG_density)
+
+z_density("Age", NG_density)
+Hz_density("Age", NG_density)
+
+z_density("Gender", NG_density)
+Hz_density("Gender", NG_density)
+```
+
+```{r OTHER_density by Vowel, Age and Gender}
+OTHER_density <- FormantData %>% filter(coda == "other")
+
+z_density("Vowel", OTHER_density)
+Hz_density("Vowel", OTHER_density)
+
+z_density("Age", OTHER_density)
+Hz_density("Age", OTHER_density)
+
+z_density("Gender", OTHER_density)
+Hz_density("Gender", OTHER_density)
+```
+
+```{r K_density by Vowel, Age and Ethnicity}
+K_density <- FormantData %>% filter(coda == "k")
+
+z_density("Vowel", K_density)
+Hz_density("Vowel", K_density)
+
+z_density("Age", K_density)
+Hz_density("Age", K_density)
+
+z_density("Ethnicity", K_density)
+Hz_density("Ethnicity", K_density)
+```
+
+# Figures for publication
+
+```{r publication formats}
+fig_row <- 2
+pub_ht <- 7
+pub_wd <- 7
+```
+
+
+```{r vowel_by_coda}
+vowel_by_coda_color <- 
+  ggplot(FormantData %>% 
+           mutate(coda = fct_relevel(coda, "ɡ", "ŋ", "k")),
+         aes(x = z_F2_50, y = z_F1_50, fill = coda, linetype = coda)) +
+  stat_density_2d(bins = 6, geom = "contour_filled", colour = "black", size = 0.25, 
+                  aes(alpha = ..nlevel..)) +
+  labs(alpha = "Density", fill = "Coda", linetype = "Coda", x = "F2 (z)", y = "F1 (z)") +
+  sub_plot_z +
+  sub_plot_theme +
+  sub_plot_color +
+  facet_wrap(~vowel, nrow = fig_row) +
+  theme(text = element_text(size=14, family="Times New Roman"),
+        legend.key.size = unit(1.5, "lines")
+  ) 
+
+vowel_by_coda_color
+
+ggsave(paste0(folder, "Vowel_density_by_Coda_color.pdf"), vowel_by_coda_color + labs(title = ""), 
+       height = pub_ht, width = pub_wd, device = cairo_pdf)
+
+ggsave(paste0(folder, "Vowel_density_by_Coda_color.tiff"), vowel_by_coda_color + labs(title = ""),
+       height = pub_ht, width = pub_wd)
+```
+
+```{r vowel_in_coda}
+vowel_in_coda_color <- 
+  ggplot(FormantData %>% 
+           mutate(coda = fct_relevel(coda, "ɡ", "ŋ", "k")), 
+         aes(x = z_F2_50, y = z_F1_50, fill = vowel, linetype = vowel)) +
+  stat_density_2d(bins = 6, geom = "contour_filled", colour = "black", size = 0.25, 
+                  aes(alpha = ..nlevel..)) +
+  labs(alpha = "Density", fill = "Vowel", linetype = "Vowel", x = "F2 (z)", y = "F1 (z)") +
+  sub_plot_z +
+  sub_plot_color +
+  sub_plot_theme +
+  facet_wrap(~coda) +
+  theme(text=element_text(size=14, family="Times New Roman"),
+        legend.key.size = unit(1.5, "lines")
+  )
+
+vowel_in_coda_color
+
+ggsave(paste0(folder, "Vowel_density_in_Coda_color.pdf"), vowel_in_coda_color + labs(title = ""), 
+       height = pub_ht, width = pub_wd, device = cairo_pdf)
+
+ggsave(paste0(folder, "Vowel_density_in_Coda_color.tiff"), vowel_in_coda_color + labs(title = ""),
+       height = pub_ht, width = pub_wd)
+```
+

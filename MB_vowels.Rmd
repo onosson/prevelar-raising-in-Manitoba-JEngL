@@ -1,0 +1,70 @@
+---
+title: "Manitoba vowels"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+Generates plots of LIPP (Manitoba English) mean vowel positions in F1 x F2 (Hz) space
+
+```{r preliminaries, include=FALSE}
+source("_prelims.R")
+rm(list=ls()[! ls() %in% never_delete])
+```
+
+```{r FAVE_means, include=FALSE}
+FAVE_means <- FAVE_clean %>% 
+  group_by(IPA) %>% 
+  filter(IPA != "ɔ",
+         vowel_type != "diphthong",
+         stress == 1) %>% 
+  summarise(mean_F1 = mean(norm_F1),
+            mean_F2 = mean(norm_F2),
+            count = n())
+```
+
+```{r FAVE_means table}
+tab_df(FAVE_means)
+```
+
+```{r FAVE_means plot}
+means_plot <- 
+  ggplot(FAVE_means %>% group_by(IPA),
+         aes(x = mean_F2, y = mean_F1, label = IPA)) +
+  scale_x_reverse() +
+  scale_y_reverse() +
+  labs(x = "F2 (Hz)", y = "F1 (Hz)") +
+  theme_bw() +
+  theme(text=element_text(size=14, family="serif"))
+
+plot_height <- 5
+plot_width <- 7
+text_size <- 10
+small_ratio <- .75
+
+means_plot_large <- means_plot + geom_label(label.size = 0, size = text_size)
+means_plot_large
+
+means_plot_small <- means_plot + geom_label(label.size = 0, size = text_size*small_ratio)
+means_plot_small
+
+ggsave("Plots/means_plot_large.pdf", 
+       means_plot_large, width = plot_width, height = plot_height, device = cairo_pdf)
+
+ggsave("Plots/means_plot_large.tiff", 
+       means_plot_large, width = plot_width, height = plot_height)
+
+ggsave("Plots/means_plot_small.pdf", 
+       means_plot_small, width = plot_width*small_ratio, height = plot_height*small_ratio, 
+       device = cairo_pdf)
+
+ggsave("Plots/means_plot_small.tiff", 
+       means_plot_small, width = plot_width*small_ratio, height = plot_height*small_ratio)
+
+```
+
+
+

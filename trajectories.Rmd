@@ -1,0 +1,506 @@
+---
+title: "Manitoba vowel trajectories"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+---
+
+# Preliminaries
+
+```{r preliminaries, include=FALSE}
+source("_prelims.R")
+rm(list=ls()[! ls() %in% never_delete])
+
+source("merger_data.R")
+plot_folder <- "GAMMs/"
+```
+
+# Data setup
+
+```{r reformat data, include=FALSE}
+# select data and calculate z-score formants
+traj_FAVE <- FAVE_clean %>% 
+  filter(language == "English",
+         stress == 1,
+         word != "WOMAN",
+  ) %>% 
+  select(speaker_id, ethnicity, sex, word, vowel, 
+         plt_manner, plt_place, plt_voice, dur, fol_seg,
+         F1_20, F1_35, F1_50, F1_65, F1_80, 
+         F2_20, F2_35, F2_50, F2_65, F2_80) %>% 
+  group_by(speaker_id) %>% 
+  mutate(z1_20 = scale(F1_20),
+         z1_35 = scale(F1_35),
+         z1_50 = scale(F1_50),
+         z1_65 = scale(F1_65),
+         z1_80 = scale(F1_80),
+         z2_20 = scale(F2_20),
+         z2_35 = scale(F2_35),
+         z2_50 = scale(F2_50),
+         z2_65 = scale(F2_65),
+         z2_80 = scale(F2_80)
+  ) %>% 
+  drop_na(plt_manner, plt_place, plt_voice) %>% 
+  filter(vowel %in% c("AE", "EH", "EY"))
+
+# add unique row ids
+traj_FAVE$token_id <- 1:nrow(traj_FAVE)
+
+# pivot to add per-timepoint formant measurements in Hz and z
+traj_data <- cbind(
+  
+  # pivot for Hz
+  traj_FAVE %>% 
+    pivot_longer(F1_20:F2_80, 
+                 names_to = c("formant_hz", "time"),
+                 names_sep = "_", 
+                 values_to = "hz") %>% 
+    pivot_wider(names_from = "formant_hz",
+                values_from = "hz") %>%
+    drop_na() %>% 
+    select(-z1_20,-z1_35,-z1_50,-z1_65,-z1_80,
+           -z2_20,-z2_35,-z2_50,-z2_65,-z2_80),
+  
+  # pivot for z
+  traj_FAVE %>% 
+    pivot_longer(z1_20:z2_80, 
+                 names_to = c("formant_z", "time"),
+                 names_sep = "_", 
+                 values_to = "z") %>% 
+    pivot_wider(names_from = "formant_z",
+                values_from = "z") %>%
+    drop_na() %>% 
+    select(z1, z2)
+  
+  # remove extraneous speaker_id column
+) %>% 
+  mutate(speaker_id = speaker_id...1) %>% 
+  select(-speaker_id...1, -speaker_id...15)
+
+
+# relabel, relevel vowels
+traj_data$vowel[traj_data$vowel=="AE"] <- "/æ/"
+traj_data$vowel[traj_data$vowel=="EH"] <- "/ɛ/"
+traj_data$vowel[traj_data$vowel=="EY"] <- "/e/"
+traj_data$vowel <- fct_relevel(traj_data$vowel, "/æ/", "/ɛ/", "/e/")
+
+# relabel codas
+traj_data$coda <- "other"
+traj_data$coda[traj_data$fol_seg=="G"] <- "/ɡ/"
+traj_data$coda[traj_data$fol_seg=="K"] <- "/k/"
+traj_data$coda[traj_data$fol_seg=="NG"] <- "/ŋ/"
+traj_data$coda <- fct_relevel(traj_data$coda, "/ɡ/", "/ŋ/", "/k/", "other")
+
+# relabel sex
+traj_data$sex[traj_data$sex=="male"] <- "Men"
+traj_data$sex[traj_data$sex=="female"] <- "Women"
+```
+
+```{r common, include=FALSE}
+############################################################
+# variables and common plot elements
+
+plot_height <- 4
+plot_width <- 7
+
+plot_common <- 
+  list(geom_smooth(method = "gam", 
+                   formula = y ~ s(x, k =5, bs = "cs") 
+                   + s(randomid, bs="re")),
+       scale_colour_viridis_d(
+         direction = -1, option = "C", end = 0.9),
+       scale_fill_viridis_d(
+         direction = -1, option = "C", end = 0.9),
+       scale_linetype_manual(values = c(1,2,3,6,5)),
+       labs(x = "Duration (%)"),
+       theme_bw(),
+       theme(legend.box = "horizontal",
+             text=element_text(
+               size = 14, family = "Times New Roman")))
+
+plot_common_both_formants <- 
+  list(geom_smooth(aes(y = z1), method = "gam", 
+                   formula = y ~ s(x, k =5, bs = "cs") 
+                   + s(randomid, bs="re")),
+       geom_smooth(aes(y = z2), method = "gam", 
+                   formula = y ~ s(x, k =5, bs = "cs") 
+                   + s(randomid, bs="re")),
+       scale_colour_viridis_d(
+         direction = -1, option = "C", end = 0.9),
+       scale_fill_viridis_d(
+         direction = -1, option = "C", end = 0.9),
+       scale_linetype_manual(values = c(1,2,3,6,5)),
+       labs(x = "Duration (%)", y = "Formants (z)"),
+       theme_bw(),
+       theme(legend.box = "horizontal",
+             text=element_text(
+               size = 14, family = "Times New Roman")))
+
+legend_insert <- theme(legend.position = c(0.75, 0.2))
+```
+
+```{r predictdf.gam}
+# add random effect to ggplot2 gam formula (Beare 2020)
+predictdf.gam <- function(model, xseq, se, level) {
+  olddata <- model.frame(model)
+  if (is.null(olddata$randomid)) {
+    newdata= tibble(x=xseq)
+  } else {
+    newdata = tibble(x=xseq, randomid=olddata$randomid[1])
+  }
+  pred <- predict(model, exclude="s(randomid)", newdata = newdata,
+                  se.fit = se, level = level, interval = if (se)
+                    "confidence"
+                  else "none")
+  if (se) {
+    y = pred$fit
+    ci <- pred$se.fit * 1.96
+    ymin = y - ci
+    ymax = y + ci
+    tibble(x = xseq, y, ymin, ymax, se = pred$se.fit)
+  }
+  else {
+    tibble(x = xseq, y = as.vector(pred))
+  }
+  
+}
+environment(predictdf.gam) <- environment(ggplot2:::predictdf.glm)
+```
+
+# Single formant plots
+
+```{r trajectories_by_coda_z1}
+trajectories_by_coda_z1 <- 
+  ggplot(traj_data, 
+         aes(x = as.numeric(time), y = z1, 
+             group = vowel, colour = vowel,
+             linetype = vowel, fill = vowel,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F1 (z)", colour = "Vowel", 
+       fill = "Vowel", linetype = "Vowel") +
+  facet_wrap(~coda, ncol = 2) +
+  plot_common
+
+#trajectories_by_coda_z1
+
+ggsave(paste0(plot_folder, 
+              "trajectories_by_coda_z1.tiff"), 
+       trajectories_by_coda_z1,
+       height = plot_height, 
+       width = plot_width,
+)
+```
+
+```{r trajectories_by_vowel_z1}
+trajectories_by_vowel_z1 <- 
+  ggplot(traj_data, 
+         aes(x = as.numeric(time), y = z1,
+             group = coda, colour = coda,
+             linetype = coda, fill = coda,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F1 (z)", colour = "Coda", 
+       fill = "Coda", linetype = "Coda") +
+  facet_wrap(~vowel, ncol = 2) +
+  plot_common + legend_insert
+
+#trajectories_by_vowel_z1
+
+ggsave(paste0(plot_folder, 
+              "trajectories_by_vowel_z1.tiff"), 
+       trajectories_by_vowel_z1,
+       height = plot_height, 
+       width = plot_width
+)
+```
+
+```{r trajectories_by_coda_z2}
+############################################################
+trajectories_by_coda_z2 <- 
+  ggplot(traj_data, 
+         aes(x = as.numeric(time), y = z2,
+             group = vowel, colour = vowel,
+             linetype = vowel, fill = vowel,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F2 (z)", colour = "Vowel", 
+       fill = "Vowel", linetype = "Vowel") +
+  facet_wrap(~coda, ncol = 2) +
+  plot_common
+
+#trajectories_by_coda_z2
+
+ggsave(paste0(plot_folder, 
+              "trajectories_by_coda_z2.tiff"), 
+       trajectories_by_coda_z2,
+       height = plot_height, 
+       width = plot_width
+)
+```
+
+```{r trajectories_by_vowel_z2}
+trajectories_by_vowel_z2 <- 
+  ggplot(traj_data, 
+         aes(x = as.numeric(time), y = z2,
+             group = coda, colour = coda,
+             linetype = coda, fill = coda,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F2 (z)", colour = "Coda", 
+       fill = "Coda", linetype = "Coda") +
+  facet_wrap(~vowel, ncol = 2) +
+  plot_common + legend_insert
+
+#trajectories_by_vowel_z2
+
+ggsave(paste0(plot_folder, 
+              "trajectories_by_vowel_z2.tiff"), 
+       trajectories_by_vowel_z2,
+       height = plot_height, 
+       width = plot_width
+)
+```
+
+# Two formant plots
+
+```{r trajectories_by_coda_z2_z1}
+trajectories_by_coda_z2_z1 <- 
+  (trajectories_by_coda_z2 + xlab("")) / trajectories_by_coda_z1 +
+  plot_layout(guides = 'collect')
+
+#trajectories_by_coda_z2_z1
+
+ggsave(paste0(plot_folder, 
+              "trajectories_by_coda_z2_z1.tiff"), 
+       trajectories_by_coda_z2_z1,
+       height = plot_height*2, 
+       width = plot_width
+)
+```
+
+```{r trajectories_by_vowel_z2_z1}
+trajectories_by_vowel_z2_z1 <- 
+  (trajectories_by_vowel_z2 + xlab("") + theme(legend.position = "none")) /
+  trajectories_by_vowel_z1
+
+#trajectories_by_vowel_z2_z1
+
+ggsave(paste0(plot_folder,
+              "trajectories_by_vowel_z2_z1.tiff"), 
+       trajectories_by_vowel_z2_z1,
+       height = plot_height*2, 
+       width = plot_width
+)
+```
+
+# Two formant plots, single pane
+
+```{r trajectories_by_coda_z2_z1_both}
+############################################################
+trajectories_by_coda_z2_z1_both <- 
+  ggplot(traj_data, 
+         aes(x = as.numeric(time),
+             group = vowel, colour = vowel,
+             linetype = vowel, fill = vowel,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(colour = "Vowel", fill = "Vowel", 
+       linetype = "Vowel") +
+  facet_wrap(~coda, ncol = 2) +
+  plot_common_both_formants
+
+#trajectories_by_coda_z2_z1_both
+
+ggsave(paste0(plot_folder, 
+              "trajectories_by_coda_z2_z1_both.tiff"), 
+       trajectories_by_coda_z2_z1_both,
+       height = plot_height*2, 
+       width = plot_width
+)
+```
+
+```{r trajectories_by_vowel_z2_z1_both}
+############################################################
+trajectories_by_vowel_z2_z1_both <- 
+  ggplot(traj_data, 
+         aes(x = as.numeric(time),
+             group = coda, colour = coda,
+             linetype = coda, fill = coda,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(colour = "Coda", fill = "Coda", linetype = "Coda") +
+  facet_wrap(~vowel, ncol = 2) +
+  plot_common_both_formants + legend_insert
+
+#trajectories_by_vowel_z2_z1_both
+
+ggsave(paste0(plot_folder, "trajectories_by_vowel_z2_z1_both.tiff"), 
+       trajectories_by_vowel_z2_z1_both,
+       height = plot_height*2, 
+       width = plot_width
+)
+```
+
+# Ethnicity
+
+```{r e_by_ethnicity_z1}
+e_by_ethnicity_z1 <- 
+  ggplot(traj_data %>% filter(vowel == "/e/"), 
+         aes(x = as.numeric(time), y = z1,
+             group = ethnicity,
+             colour = ethnicity, 
+             linetype = ethnicity, 
+             fill = ethnicity,
+             randomid = as.factor(speaker_id))) +
+  labs(y = "F1 (z)", 
+       colour = "Ethnicity", 
+       fill = "Ethnicity", 
+       linetype = "Ethnicity") +
+  facet_wrap(~vowel) +
+  plot_common
+
+#e_by_ethnicity_z1
+
+ggsave(paste0(plot_folder, "e_by_ethnicity_z1.tiff"), 
+       e_by_ethnicity_z1, 
+       height = plot_height, 
+       width = plot_width,
+)
+```
+
+```{r e_by_ethnicity_z2}
+e_by_ethnicity_z2 <- 
+  ggplot(traj_data %>% filter(vowel == "/e/"), 
+         aes(x = as.numeric(time), y = z2,
+             group = ethnicity,
+             colour = ethnicity, 
+             linetype = ethnicity, 
+             fill = ethnicity,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F2 (z)", colour = "Ethnicity", fill = "Ethnicity", 
+       linetype = "Ethnicity") +
+  facet_wrap(~vowel) +
+  plot_common
+
+#e_by_ethnicity_z2
+
+ggsave(paste0(plot_folder, "e_by_ethnicity_z2.tiff"), 
+       e_by_ethnicity_z2, 
+       height = plot_height, 
+       width = plot_width,
+)
+```
+
+```{r e_by_ethnicity_male_z2}
+e_by_ethnicity_male_z2 <- 
+  ggplot(traj_data %>% 
+           filter(
+             sex == "Men", vowel == "/e/"), 
+         aes(x = as.numeric(time), y = z2,
+             group = ethnicity,
+             colour = ethnicity, 
+             linetype = ethnicity, 
+             fill = ethnicity,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F2 (z)", 
+       colour = "Ethnicity", 
+       fill = "Ethnicity", 
+       linetype = "Ethnicity") +
+  facet_wrap(sex~vowel, labeller = label_wrap_gen(multi_line=FALSE)) +
+  plot_common
+
+#e_by_ethnicity_male_z2
+
+ggsave(paste0(plot_folder, 
+              "e_by_ethnicity_male_z2.tiff"), 
+       e_by_ethnicity_male_z2,
+       height = plot_height, 
+       width = plot_width,
+)
+```
+
+```{r eh_by_ethnicity_z2}
+eh_by_ethnicity_z2 <- 
+  ggplot(traj_data %>% filter(vowel == "/ɛ/"), 
+         aes(x = as.numeric(time), y = z2,
+             group = ethnicity,
+             colour = ethnicity, 
+             linetype = ethnicity, 
+             fill = ethnicity,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F2 (z)", colour = "Ethnicity", fill = "Ethnicity", 
+       linetype = "Ethnicity") +
+  facet_wrap(~vowel) +
+  plot_common
+
+#eh_by_ethnicity_z2
+
+ggsave(paste0(plot_folder, "eh_by_ethnicity_z2.tiff"), 
+       eh_by_ethnicity_z2, 
+       height = plot_height, 
+       width = plot_width,
+)
+```
+
+```{r k_by_ethnicity_male_z1}
+k_by_ethnicity_male_z1 <- 
+  ggplot(traj_data %>% 
+           filter(sex == "Men", coda == "/k/") %>% 
+           mutate(coda = fct_recode(
+             coda, `pre-/k/` = "/k/")), 
+         aes(x = as.numeric(time), y = z1,
+             group = ethnicity,
+             colour = ethnicity, 
+             linetype = ethnicity, 
+             fill = ethnicity,
+             randomid = c(as.factor(speaker_id)))) +
+  labs(y = "F1 (z)", colour = "Ethnicity", fill = "Ethnicity", 
+       linetype = "Ethnicity") +
+  facet_wrap(sex~coda, labeller = label_wrap_gen(multi_line=FALSE)) +
+  plot_common
+
+k_by_ethnicity_male_z1
+
+ggsave(paste0(plot_folder, 
+              "k_by_ethnicity_male_z1.tiff"), 
+       k_by_ethnicity_male_z1,
+       height = plot_height, 
+       width = plot_width,
+)
+```
+
+```{r trajectories_by_ethnicity_and_sex_horizontal}
+trajectories_by_ethnicity_and_sex_horizontal <- 
+  e_by_ethnicity_z1 + e_by_ethnicity_z2 + e_by_ethnicity_male_z2 +
+  eh_by_ethnicity_z2 + k_by_ethnicity_male_z1 + guide_area() +
+  plot_layout(guides = 'collect')
+
+#trajectories_by_ethnicity_and_sex_horizontal
+
+ggsave(paste0(plot_folder, "trajectories_by_ethnicity_and_sex_horizontal.tiff"), 
+       trajectories_by_ethnicity_and_sex_horizontal, 
+       height = plot_height*1.25, 
+       width = plot_width*1.25,
+)
+```
+
+```{r trajectories_by_ethnicity_and_sex_vertical}
+trajectories_by_ethnicity_and_sex_vertical <- 
+  e_by_ethnicity_z1 + e_by_ethnicity_z2 + 
+  eh_by_ethnicity_z2 + e_by_ethnicity_male_z2 + 
+  k_by_ethnicity_male_z1 + guide_area() + 
+  plot_layout(guides = 'collect', ncol = 2)
+
+#trajectories_by_ethnicity_and_sex_vertical
+
+ggsave(paste0(plot_folder, "trajectories_by_ethnicity_and_sex_vertical.tiff"), 
+       trajectories_by_ethnicity_and_sex_vertical, 
+       height = plot_height*1.75, 
+       width = plot_width,
+)
+
+```
+
+
+```{r out, include=FALSE}
+rm(list=ls()[! ls() %in% never_delete])
+```
+

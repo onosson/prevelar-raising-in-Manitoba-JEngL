@@ -1,0 +1,39 @@
+---
+title: "merger duration"
+output: html_notebook
+---
+
+```{r preliminaries}
+source("_prelims.R")
+rm(list=ls()[! ls() %in% never_delete])
+source("merger_data.R")
+```
+
+```{r}
+dur_boxplot_color <- 
+  ggplot(MergerData %>% 
+           mutate(coda = fct_relevel(coda, "ɡ", "ŋ", "k")), 
+         aes(y = dur*1000, x = vowel, fill = vowel)) +
+  geom_boxplot(outlier.size = 0.5, alpha = 0.75, 
+               notch = TRUE, outlier.shape = NA, na.rm = TRUE) + 
+  facet_wrap(~coda, ncol = 4) + 
+  labs(y = "Duration (ms)", x = "Vowel", 
+       linetype = "Coda voicing") +
+  scale_fill_viridis_d(option = "C") +
+  guides(fill = "none") + 
+  ylim(0, 300) +
+  theme_bw() +
+  theme(text=element_text(size=14, family="Times New Roman"))
+
+dur_boxplot_color
+
+ggsave("Plots/dur_boxplot_color.pdf", 
+       dur_boxplot_color, height = 3, cairo_pdf)
+
+ggsave("Plots/dur_boxplot_color.tiff", 
+       dur_boxplot_color, height = 3)
+```
+
+
+
+
